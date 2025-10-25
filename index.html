@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quick Weather</title>
+  <meta name="description" content="Fast, simple weather app using the free Open-Meteo API (no key required)." />
+  <link rel="preconnect" href="https://api.open-meteo.com" crossorigin>
+  <link rel="preconnect" href="https://geocoding-api.open-meteo.com" crossorigin>
+  <style>
+    :root{
+      --bg:#0b1020; --card:#111735; --muted:#98a2b3; --text:#e6eaf2; --accent:#6ea8fe; --accent-2:#b69bff; --danger:#ff6b6b; --input:#0f1530;
+      --radius:18px;
+    }
+    [data-theme="light"]{
+      --bg:#f3f5fb; --card:#ffffff; --muted:#6b7280; --text:#0f172a; --accent:#2563eb; --accent-2:#7c3aed; --danger:#dc2626; --input:#f1f5f9;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial; color:var(--text);
+      background: radial-gradient(1200px 600px at 80% -10%, color-mix(in oklab, var(--accent) 25%, transparent), transparent 60%),
+                  radial-gradient(1200px 600px at -10% 110%, color-mix(in oklab, var(--accent-2) 20%, transparent), transparent 60%),
+                  var(--bg);
+      display:grid; place-items:center; padding:24px; transition: background .3s ease, color .3s ease;
+    }
+    .app{ width:100%; max-width:820px; background:linear-gradient(180deg, color-mix(in oklab, #fff 4%, transparent), color-mix(in oklab, #fff 2%, transparent)); backdrop-filter: blur(10px); border:1px solid color-mix(in oklab, #fff 8%, transparent); border-radius: var(--radius); box-shadow: 0 30px 60px rgba(0,0,0,.35); overflow:hidden; }
+    header{padding:26px 24px 0; display:flex; align-items:center; justify-content:space-between; gap:12px}
+    h1{margin:0; font-size:22px; letter-spacing:.2px}
+    .controls{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+    .control-btn{ padding:10px 12px; border:none; border-radius:12px; font-weight:600; cursor:pointer; font-size:14px; background: var(--input); color:var(--text); border:1px solid color-mix(in oklab, #000 10%, #fff 10%); }
+    .control-select{
+      appearance:none; -webkit-appearance:none; -moz-appearance:none;
+      padding:10px 12px; border-radius:12px; font-weight:700; font-size:14px; background:var(--input); color:var(--text);
+      border:1px solid color-mix(in oklab, #000 10%, #fff 10%); cursor:pointer;
+    }
+    .search{display:flex; gap:10px; padding:16px 24px 24px}
+    input[type="text"]{ flex:1; background:var(--input); color:var(--text); border:1px solid color-mix(in oklab, #000 10%, #fff 10%); border-radius:12px; padding:14px 16px; outline:none; font-size:16px; }
+    #go{padding:14px 16px; border:none; border-radius:12px; font-weight:600; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color:#0b1020}
+    #locate{padding:14px 16px; border:none; border-radius:12px; font-weight:600; background: var(--input); color:var(--text); border:1px solid color-mix(in oklab, #000 10%, #fff 10%)}
+    .content{display:grid; gap:16px; padding:0 24px 24px}
+    .card{background:color-mix(in oklab, #fff 3%, transparent); border:1px solid color-mix(in oklab, #fff 8%, transparent); border-radius:16px; padding:18px}
+    .current{display:flex; align-items:center; justify-content:space-between; gap:16px}
+    .city{font-size:18px; opacity:.9}
+    .temp{font-size:56px; font-weight:700; line-height:1}
+    .meta{display:flex; gap:14px; flex-wrap:wrap; opacity:.9}
+    .emoji{font-size:42px}
+    .row{display:grid; grid-template-columns: repeat(3, 1fr); gap:12px}
+    .kv{display:flex; align-items:center; gap:10px}
+    .error{color:var(--danger); font-weight:600}
+    .muted{color:var(--muted)}
+    .loader{width:18px; height:18px; border:3px solid color-mix(in oklab, #fff 35%, transparent); border-top-color:#fff; border-radius:50%; animation:spin 1s linear infinite; display:inline-block; vertical-align:middle}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media (max-width:600px){
+      body{display:block; padding:16px; min-height:100dvh;}
+      .app{max-width:100%; border-radius:14px;}
+      header{padding:18px 16px 0;}
+      .search{flex-direction:column; gap:8px; padding:12px 16px 16px;}
+      #go,#locate{width:100%; padding:16px; font-size:16px;}
+      .row{grid-template-columns:1fr 1fr;}
+    }
+    @media (max-width:380px){.row{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+  <div class="app" role="application" aria-label="Quick Weather App">
+    <header>
+      <h1 id="title">Quick Weather</h1>
+      <div class="controls">
+        <button id="unitToggle" class="control-btn" title="Toggle °C/°F">°C</button>
+        <button id="themeToggle" class="control-btn" title="Toggle dark/light">Dark</button>
+        <select id="langSelect" class="control-select" aria-label="Language">
+          <option value="en">EN</option>
+          <option value="bg">BG</option>
+        </select>
+      </div>
+    </header>
+
+    <div class="search" role="search">
+      <input id="city" type="text" placeholder="Search city... e.g. Sofia, Rome, Berlin" autocomplete="off" aria-label="City name" />
+      <button id="go">Get Weather</button>
+      <button id="locate" title="Use my location">Use My Location</button>
+    </div>
+
+    <section class="content" id="content" aria-live="polite">
+      <div class="muted" id="hint">Type a city and press <strong>Get Weather</strong>, or click <strong>Use My Location</strong>.</div>
+    </section>
+  </div>
+
+  <script>
+  // --- Elements & state
+  const cityInput=document.getElementById('city');
+  const goBtn=document.getElementById('go');
+  const locateBtn=document.getElementById('locate');
+  const content=document.getElementById('content');
+  const unitToggle=document.getElementById('unitToggle');
+  const themeToggle=document.getElementById('themeToggle');
+  const langSelect=document.getElementById('langSelect');
+  const titleEl=document.getElementById('title');
+  const hintEl=document.getElementById('hint');
+  const htmlEl=document.documentElement;
+
+  let unit=localStorage.getItem('unit')||'C';
+  let theme=localStorage.getItem('theme')||'dark';
+  let lang=localStorage.getItem('lang')||((navigator.language||'en').startsWith('bg')?'bg':'en');
+  let lastData=null;
+
+  // --- i18n dictionaries
+  const i18n={
+    en:{
+      title:'Quick Weather',
+      search_ph:'Search city... e.g. Sofia, Rome, Berlin',
+      get_weather:'Get Weather',
+      use_location:'Use My Location',
+      hint:'Type a city and press <strong>Get Weather</strong>, or click <strong>Use My Location</strong>.',
+      looking_up: c=>`Looking up “${escapeHTML(c)}”… <span class="loader"></span>`,
+      fetching_loc:'Fetching weather for your location… <span class="loader"></span>',
+      try_ip:'Trying approximate location via IP… <span class="loader"></span>',
+      ip_unavail:'IP location unavailable.',
+      could_not_detect:'Could not detect location.',
+      valid_city:'Please enter a valid city.',
+      geocode_fail:'Geocoding failed.',
+      city_not_found:'City not found. Try a different name.',
+      wx_fail:'Weather request failed.',
+      feels:'Feels', humidity:'Humidity', precip:'Precip', wind:'Wind', direction:'Direction', coords:'Coords',
+      light:'Light', dark:'Dark',
+      codes:{
+        0:'Clear sky',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Rime fog',
+        51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',56:'Freezing drizzle',57:'Freezing drizzle',
+        61:'Light rain',63:'Rain',65:'Heavy rain',66:'Freezing rain',67:'Freezing rain',
+        71:'Light snow',73:'Snow',75:'Heavy snow',77:'Snow grains',
+        80:'Rain showers',81:'Heavy showers',82:'Violent showers',85:'Snow showers',86:'Heavy snow showers',
+        95:'Thunderstorm',96:'Thunder w/ hail',99:'Thunder w/ hail'
+      }
+    },
+    bg:{
+      title:'Бърза прогноза',
+      search_ph:'Търсене на град… напр. София, Рим, Берлин',
+      get_weather:'Виж времето',
+      use_location:'Използвай местоположението',
+      hint:'Въведи град и натисни <strong>Виж времето</strong> или кликни <strong>Използвай местоположението</strong>.',
+      looking_up: c=>`Търся „${escapeHTML(c)}“… <span class="loader"></span>`,
+      fetching_loc:'Зареждам прогноза за твоето местоположение… <span class="loader"></span>',
+      try_ip:'Опитвам приблизително местоположение по IP… <span class="loader"></span>',
+      ip_unavail:'Услугата за IP местоположение е недостъпна.',
+      could_not_detect:'Не успях да открия местоположение.',
+      valid_city:'Моля, въведи валиден град.',
+      geocode_fail:'Грешка при търсене на град.',
+      city_not_found:'Градът не е намерен. Опитай друго име.',
+      wx_fail:'Грешка при заявката за времето.',
+      feels:'Усеща се', humidity:'Влажност', precip:'Валежи', wind:'Вятър', direction:'Посока', coords:'Координати',
+      light:'Светъл', dark:'Тъмен',
+      codes:{
+        0:'Ясно небе',1:'Предимно ясно',2:'Разкъсана облачност',3:'Облачно',45:'Мъгла',48:'Мразовита мъгла',
+        51:'Слаб ръмеж',53:'Ръмеж',55:'Силен ръмеж',56:'Леден ръмеж',57:'Леден ръмеж',
+        61:'Слаб дъжд',63:'Дъжд',65:'Силен дъжд',66:'Леден дъжд',67:'Леден дъжд',
+        71:'Слаб сняг',73:'Сняг',75:'Силен сняг',77:'Снежни зрънца',
+        80:'Превалявания от дъжд',81:'Силни превалявания',82:'Бурни превалявания',
+        85:'Превалявания от сняг',86:'Силни превалявания от сняг',
+        95:'Гръмотевична буря',96:'Буря с градушка',99:'Буря с градушка'
+      }
+    }
+  };
+
+  // --- Weather icons stay the same across languages
+  const iconMap={
+    0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',
+    51:'🌦️',53:'🌦️',55:'🌧️',56:'🥶',57:'🥶',
+    61:'🌧️',63:'🌧️',65:'🌧️',66:'🥶',67:'🥶',
+    71:'🌨️',73:'🌨️',75:'❄️',77:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',
+    85:'🌨️',86:'❄️',95:'⛈️',96:'⛈️',99:'⛈️'
+  };
+
+  // --- Helpers
+  function t(key){ return i18n[lang][key] ?? i18n.en[key] ?? key; }
+  function codeText(code){ return (i18n[lang].codes[code] ?? i18n.en.codes[code] ?? ''); }
+  function escapeHTML(str){return String(str).replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[s]));}
+  const cToF=c=>c*9/5+32;
+  function formatTemp(c){ return unit==='C' ? Math.round(c)+'°C' : Math.round(cToF(c))+'°F'; }
+  const degToCompass=d=>['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(d/22.5)%16];
+
+  function applyTheme(){
+    htmlEl.setAttribute('data-theme', theme);
+    themeToggle.textContent = theme==='dark' ? t('dark') : t('light'); // show CURRENT theme
+  }
+  function applyUnit(){
+    unitToggle.textContent = unit==='C' ? '°C' : '°F';
+    if(lastData) renderCurrent(lastData);
+  }
+  function applyLang(){
+    htmlEl.setAttribute('lang', lang);
+    titleEl.textContent = t('title');
+    cityInput.placeholder = t('search_ph');
+    goBtn.textContent = t('get_weather');
+    locateBtn.textContent = t('use_location');
+    hintEl.innerHTML = t('hint');
+    // refresh current card if exists
+    if(lastData) renderCurrent(lastData);
+  }
+
+  function setStatus(html){ content.innerHTML = `<div class="card muted">${html}</div>`; }
+
+  async function fetchAndRender({lat,lon,label}){
+    const wxURL=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m&timezone=auto`;
+    const wxRes=await fetch(wxURL);
+    if(!wxRes.ok) throw new Error(t('wx_fail'));
+    const wx=await wxRes.json();
+    const d={
+      city:label,tz:wx.timezone_abbreviation,
+      t:wx.current.temperature_2m,feels:wx.current.apparent_temperature,
+      rh:wx.current.relative_humidity_2m,wc:wx.current.weather_code,
+      wind:wx.current.wind_speed_10m,windd:wx.current.wind_direction_10m,
+      precip:wx.current.precipitation,lat,lon
+    };
+    lastData=d; renderCurrent(d);
+  }
+
+  async function fetchWeatherByCity(city){
+    if(!city || city.trim().length<2) throw new Error(t('valid_city'));
+    setStatus(t('looking_up')(city));
+    const geoURL=`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=${lang==='bg'?'bg':'en'}&format=json`;
+    const r=await fetch(geoURL);
+    if(!r.ok) throw new Error(t('geocode_fail'));
+    const j=await r.json();
+    if(!j.results?.length) throw new Error(t('city_not_found'));
+    const g=j.results[0];
+    const label=`${g.name}${g.admin1?', '+g.admin1:''}${g.country?', '+g.country:''}`;
+    await fetchAndRender({lat:g.latitude,lon:g.longitude,label});
+    localStorage.setItem('lastCity', g.name);
+  }
+
+  async function fetchWeatherByCoords(lat,lon){
+    setStatus(t('fetching_loc'));
+    let label = lang==='bg' ? 'Твоето местоположение' : 'Your location';
+    try{
+      const rev=await fetch(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=${lang==='bg'?'bg':'en'}&format=json`);
+      if(rev.ok){
+        const j=await rev.json();
+        if(j.results?.[0]){
+          const r=j.results[0];
+          label=`${r.name||label}${r.admin1?', '+r.admin1:''}${r.country?', '+r.country:''}`;
+        }
+      }
+    }catch{}
+    await fetchAndRender({lat,lon,label});
+  }
+
+  function renderCurrent(d){
+    const emoji = iconMap[d.wc] || '❓';
+    const desc = codeText(d.wc) || (lang==='bg'?'Неизвестно':'Unknown');
+    content.innerHTML = `
+      <div class="card current">
+        <div>
+          <div class="city">${escapeHTML(d.city)}</div>
+          <div class="temp">${formatTemp(d.t)}</div>
+          <div class="meta"><span>${desc}</span><span>·</span><span>${d.tz}</span></div>
+        </div>
+        <div class="emoji" aria-label="${desc}">${emoji}</div>
+      </div>
+      <div class="row">
+        <div class="card kv"><strong>${t('feels')}</strong> ${formatTemp(d.feels)}</div>
+        <div class="card kv"><strong>${t('humidity')}</strong> ${Math.round(d.rh)}%</div>
+        <div class="card kv"><strong>${t('precip')}</strong> ${d.precip?.toFixed ? d.precip.toFixed(1) : d.precip} mm</div>
+        <div class="card kv"><strong>${t('wind')}</strong> ${Math.round(d.wind)} km/h</div>
+        <div class="card kv"><strong>${t('direction')}</strong> ${degToCompass(d.windd)} (${Math.round(d.windd)}°)</div>
+        <div class="card kv"><strong>${t('coords')}</strong> ${d.lat.toFixed(2)}, ${d.lon.toFixed(2)}</div>
+      </div>`;
+  }
+
+  async function ipFallback(){
+    try{
+      setStatus(t('try_ip'));
+      const res=await fetch('https://ipapi.co/json/');
+      if(!res.ok) throw new Error(t('ip_unavail'));
+      const j=await res.json();
+      if(!j.latitude||!j.longitude) throw new Error(t('could_not_detect'));
+      await fetchWeatherByCoords(j.latitude,j.longitude);
+    }catch(e){
+      content.innerHTML = `<div class="card error">${escapeHTML(e.message)}</div>`;
+    }
+  }
+
+  // --- Events
+  locateBtn.addEventListener('click', ()=>{
+    if(!navigator.geolocation) return content.innerHTML = `<div class="card error">${lang==='bg'?'Браузърът не поддържа геолокация.':'Geolocation not supported.'}</div>`;
+    navigator.geolocation.getCurrentPosition(
+      p=>fetchWeatherByCoords(p.coords.latitude,p.coords.longitude).catch(ipFallback),
+      _=>ipFallback(),
+      {enableHighAccuracy:false,timeout:10000,maximumAge:300000}
+    );
+  });
+  goBtn.addEventListener('click', ()=>fetchWeatherByCity(cityInput.value).catch(e=>content.innerHTML=`<div class="card error">${escapeHTML(e.message)}</div>`));
+  cityInput.addEventListener('keydown', e=>{ if(e.key==='Enter') goBtn.click(); });
+  unitToggle.addEventListener('click', ()=>{ unit = unit==='C' ? 'F' : 'C'; localStorage.setItem('unit', unit); applyUnit(); });
+  themeToggle.addEventListener('click', ()=>{ theme = theme==='dark' ? 'light' : 'dark'; localStorage.setItem('theme', theme); applyTheme(); });
+  langSelect.addEventListener('change', ()=>{
+    lang = langSelect.value;
+    localStorage.setItem('lang', lang);
+    applyLang(); applyTheme(); // update button text language too
+  });
+
+  // --- Init
+  langSelect.value = lang;
+  applyLang();
+  applyTheme();
+  applyUnit();
+  const last = localStorage.getItem('lastCity'); if(last) fetchWeatherByCity(last).catch(()=>{});
+  </script>
+</body>
+</html>
